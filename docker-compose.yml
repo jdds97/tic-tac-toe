@@ -1,0 +1,28 @@
+services:
+  app:
+    container_name: "tic-tac-toe_app"
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/tic-tac-toe
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongodb
+
+  mongodb:
+    container_name: "tic-tac-toe_mongodb"
+    image: mongo:latest
+    restart: unless-stopped
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+
+volumes:
+  mongodb_data:
