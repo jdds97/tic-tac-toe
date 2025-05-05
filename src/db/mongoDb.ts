@@ -1,8 +1,6 @@
 import mongoose from 'mongoose';
 import { MongooseCache, ConnectionResult } from '@/lib/types';
-
-// Cadena de conexión a MongoDB
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongodb:27017/tic-tac-toe';
+import { MONGODB_URI } from '@/lib/constants';
 
 // Variable para almacenar la conexión en desarrollo (para no reconectar en cada hot reload)
 let cached: MongooseCache = {
@@ -25,7 +23,6 @@ export async function connectToDatabase(): Promise<ConnectionResult> {
       bufferCommands: false,
     };
 
-    // Crear una nueva promesa de conexión
     cached.promise = mongoose.connect(MONGODB_URI, opts)
       .then((mongoose) => {
         return mongoose;
@@ -37,7 +34,6 @@ export async function connectToDatabase(): Promise<ConnectionResult> {
   }
 
   try {
-    // Esperar a que la conexión se complete
     cached.conn = await cached.promise;
     return { success: true, message: 'Conectado a MongoDB exitosamente' };
   } catch (error) {
