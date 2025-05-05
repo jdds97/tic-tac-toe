@@ -1,78 +1,102 @@
-'use server'
+'use server';
 import { revalidatePath } from 'next/cache';
-import { Board, Move } from './types';
-import { verificarGanador,tableroLleno,tableroVacio } from './gameLogic';
+import { Board, GameStats, Move, ServerActionResponse } from './types';
+import { verificarGanador, obtenerMovimientoIA } from './gameLogic';
+import { crearTableroVacio, tableroLleno, tableroVacio } from './utils';
 import { connectToDatabase } from '@/db/mongoDb';
 import Game from '@/db/models/Game';
+import Stats from '@/db/models/Stats';
+
+// --- FUNCIONES AUXILIARES PRIVADAS ---
 
 /**
- * Crea un nuevo juego o devuelve el juego activo actual
+ * Auxiliar para obtener y validar el juego y el turno actual
  */
-export async function iniciarJuego(): Promise<{gameId: string, tablero: Board, turno: string}> {
-  try {
-    await connectToDatabase();
-    // Buscar juego activo en progreso
-    let juego = await Game.findActiveGame();
-    if (
-      juego &&
-      juego.state === 'en_progreso' &&
-      !tableroLleno(juego.board)
-    ) {
-      // Si hay un juego en progreso y el tablero no está lleno, devolverlo
-      return {
-        gameId: juego._id.toString(),
-        tablero: juego.board,
-        turno: juego.currentPlayer
-      };
-    }
-    // Si no hay juego jugable, crear uno nuevo
-    const board: Board = [
-      [null, null, null],
-      [null, null, null],
-      [null, null, null]
-    ];
-    juego = await Game.create({
-      board,
-      currentPlayer: 'jugador',
-      state: 'en_progreso',
-      winner: null
-    });
-    return {
-      gameId: juego._id.toString(),
-      tablero: juego.board,
-      turno: juego.currentPlayer
-    };
-  } catch (error) {
-    console.error('Error al iniciar juego:', error);
-    throw error;
+async function procesarTurno(gameId: string, turnoEsperado: 'jugador' | 'ia') {
+  await connectToDatabase();
+  const juego = await Game.findById(gameId);
+  if (!juego || juego.state !== 'en_progreso') {
+    throw new Error('Juego no encontrado o ya finalizado');
   }
+  if (juego.currentPlayer !== turnoEsperado) {
+    throw new Error(`No es el turno de ${turnoEsperado}`);
+  }
+  return juego;
 }
 
 /**
- * Reinicia el juego: si el tablero está vacío, reutiliza el juego existente; si no, crea uno nuevo
+ * Lógica común para procesar el final de un turno (jugador o IA)
  */
-export async function reiniciarJuego(): Promise<{gameId: string, tablero: Board, turno: string}> {
+async function procesarFinDeTurno(juego: any, movimiento: Move, jugador: 'jugador' | 'ia') {
+  const resultado = verificarGanador(juego.board, movimiento);
+  if (resultado === 'X' || resultado === 'O') {
+    const estado = resultado === 'X' ? 'victoria_jugador' : 'victoria_ia';
+    juego.state = estado;
+    juego.winner = resultado === 'X' ? 'jugador' : 'ia';
+    await juego.save();
+    await actualizarEstadisticas(juego.winner);
+    revalidatePath('/');
+    return {
+      tablero: juego.board,
+      turno: jugador,
+      estado,
+      ganador: juego.winner
+    };
+  }
+  if (resultado === 'empate') {
+    juego.state = 'empate';
+    juego.winner = null;
+    await juego.save();
+    await actualizarEstadisticas('empate');
+    revalidatePath('/');
+    return {
+      tablero: juego.board,
+      turno: null,
+      estado: 'empate',
+      ganador: null
+    };
+  }
+  // Si el juego sigue, cambiar el turno
+  juego.currentPlayer = jugador === 'jugador' ? 'ia' : 'jugador';
+  await juego.save();
+  revalidatePath('/');
+  return {
+    tablero: juego.board,
+    turno: juego.currentPlayer,
+    estado: 'en_progreso',
+    ganador: null
+  };
+}
+
+/**
+ * Lógica genérica para iniciar o reiniciar un juego
+ * @param reiniciar Si es true, fuerza la creación de un nuevo juego
+ */
+async function gestionarJuego(reiniciar = false): Promise<ServerActionResponse<{ gameId: string, tablero: Board, turno: string }>> {
   try {
     await connectToDatabase();
     let juego = await Game.findActiveGame();
-    if (
-      juego &&
-      juego.state === 'en_progreso' &&
-      tableroVacio(juego.board)
-    ) {
-      // Si hay un juego en progreso y el tablero está vacío, reutilizarlo
+    if (!reiniciar && juego && juego.state === 'en_progreso' && !tableroLleno(juego.board)) {
       return {
-        gameId: juego._id.toString(),
-        tablero: juego.board,
-        turno: juego.currentPlayer
+        success: true,
+        data: {
+          gameId: juego._id.toString(),
+          tablero: juego.board,
+          turno: juego.currentPlayer
+        }
       };
     }
-    // Si no, crear uno nuevo
-    const board: Board = [
-      [null, null, null],
-      [null, null, null],
-      [null, null, null]
-    ];
+    if (reiniciar && juego && juego.state === 'en_progreso' && tableroVacio(juego.board)) {
+      return {
+        success: true,
+        data: {
+          gameId: juego._id.toString(),
+          tablero: juego.board,
+          turno: juego.currentPlayer
+        }
+      };
+    }
+    const board = crearTableroVacio();
     juego = await Game.create({
       board,
       currentPlayer: 'jugador',
@@ -80,14 +104,35 @@ export async function reiniciarJuego(): Promise<{gameId: string, tablero: Board,
       winner: null
     });
     return {
-      gameId: juego._id.toString(),
-      tablero: juego.board,
-      turno: juego.currentPlayer
+      success: true,
+      data: {
+        gameId: juego._id.toString(),
+        tablero: juego.board,
+        turno: juego.currentPlayer
+      }
     };
   } catch (error) {
-    console.error('Error al reiniciar juego:', error);
-    throw error;
+    return {
+      success: false,
+      message: `Error al gestionar el juego: ${error instanceof Error ? error.message : String(error)}`
+    };
   }
+}
+
+// --- ACCIONES PRINCIPALES EXPORTADAS ---
+
+/**
+ * Inicia un nuevo juego o devuelve el juego activo
+ */
+export async function iniciarJuego(): Promise<ServerActionResponse<{ gameId: string, tablero: Board, turno: string }>> {
+  return gestionarJuego(false);
+}
+
+/**
+ * Reinicia el juego (fuerza nuevo tablero si es necesario)
+ */
+export async function reiniciarJuego(): Promise<ServerActionResponse<{ gameId: string, tablero: Board, turno: string }>> {
+  return gestionarJuego(true);
 }
 
 /**
@@ -96,68 +141,111 @@ export async function reiniciarJuego(): Promise<{gameId: string, tablero: Board,
 export async function realizarMovimientoJugador(
   gameId: string,
   movimiento: Move
-): Promise<{
-  tablero: Board,
-  turno: string,
-  estado: string,
-  ganador: string | null
-}> {
+): Promise<ServerActionResponse<{ tablero: Board, turno: string, estado: string, ganador: string | null }>> {
   try {
-    await connectToDatabase();
-    const juego = await Game.findById(gameId);
-    if (!juego || juego.state !== 'en_progreso') {
-      throw new Error('Juego no encontrado o ya finalizado');
+    const juego = await procesarTurno(gameId, 'jugador');
+    if (movimiento == null) {
+      return { success: false, message: 'Movimiento no válido' };
     }
-    // Validar el movimiento
-    if (juego.currentPlayer !== 'jugador' || movimiento == null) {
-      throw new Error('Movimiento no válido');
-    }
-    // Marcar la posición en el tablero con "X"
     if (juego.board[movimiento.fila][movimiento.columna] !== null) {
-      throw new Error('La casilla ya está ocupada');
+      return { success: false, message: 'La casilla ya está ocupada' };
     }
     juego.board[movimiento.fila][movimiento.columna] = 'X';
-
-    // Verificar si el jugador ganó
-    if (verificarGanador(juego.board, movimiento)) {
-      juego.state = 'victoria_jugador';
-      juego.winner = 'jugador';
-      await juego.save();
-      await actualizarEstadisticas('jugador');
-      revalidatePath('/');
-      return {
-        tablero: juego.board,
-        turno: 'jugador',
-        estado: 'victoria_jugador',
-        ganador: 'jugador'
-      };
-    }
-    // Verificar si hay empate
-    if (tableroLleno(juego.board)) {
-      juego.state = 'empate';
-      juego.winner = null;
-      await juego.save();
-      await actualizarEstadisticas('empate');
-      revalidatePath('/');
-      return {
-        tablero: juego.board,
-        turno: 'jugador',
-        estado: 'empate',
-        ganador: null
-      };
-    }
-    // Cambiar turno a la IA (si quieres que la IA juegue aquí, añade la lógica)
-    juego.currentPlayer = 'ia';
-    await juego.save();
-    revalidatePath('/');
+    const resultado = await procesarFinDeTurno(juego, movimiento, 'jugador');
     return {
-      tablero: juego.board,
-      turno: 'ia',
-      estado: 'en_progreso',
-      ganador: null
+      success: true,
+      data: resultado
     };
   } catch (error) {
-    console.error('Error al realizar movimiento:', error);
-    throw error;
+    return {
+      success: false,
+      message: `Error al realizar movimiento: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Procesa el movimiento de la IA
+ */
+export async function realizarMovimientoIA(gameId: string): Promise<ServerActionResponse<{ tablero: Board, turno: string, estado: string, ganador: string | null }>> {
+  try {
+    const juego = await procesarTurno(gameId, 'ia');
+    const movimiento = obtenerMovimientoIA(juego.board);
+    if (!movimiento) {
+      return { success: false, message: 'No hay movimientos posibles para la IA' };
+    }
+    juego.board[movimiento.fila][movimiento.columna] = 'O';
+    const resultado = await procesarFinDeTurno(juego, movimiento, 'ia');
+    return {
+      success: true,
+      data: resultado
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Error en el movimiento de la IA: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Obtiene las estadísticas globales de partidas
+ */
+export async function obtenerEstadisticas(): Promise<ServerActionResponse<GameStats>> {
+  try {
+    await connectToDatabase();
+    let stats = await Stats.findOne();
+    if (!stats) {
+      stats = await Stats.create({});
+    }
+    // Calcular el formato esperado por GameStats
+    const jugador = {
+      victorias: stats.playerWins,
+      empates: stats.draws,
+      derrotas: stats.aiWins
+    };
+    const ia = {
+      victorias: stats.aiWins,
+      empates: stats.draws,
+      derrotas: stats.playerWins
+    };
+    return {
+      success: true,
+      data: { jugador, ia }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Error al obtener estadísticas: ${error instanceof Error ? error.message : String(error)}`
+    };
+  }
+}
+
+/**
+ * Actualiza las estadísticas globales según el resultado
+ */
+export async function actualizarEstadisticas(
+  resultado: 'jugador' | 'ia' | 'empate'): Promise<ServerActionResponse<void>> {
+  try {
+    await connectToDatabase();
+    let stats = await Stats.findOne();
+    if (!stats) {
+      stats = await Stats.create({});
+    }
+    if (resultado === 'jugador') {
+      stats.playerWins += 1;
+    } else if (resultado === 'ia') {
+      stats.aiWins += 1;
+    } else if (resultado === 'empate') {
+      stats.draws += 1;
+    }
+    stats.totalGames += 1;
+    await stats.save();
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Error al actualizar estadísticas: ${error instanceof Error ? error.message : String(error)}`
+    };
   }
 }
