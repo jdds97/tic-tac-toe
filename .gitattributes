@@ -1,0 +1,2 @@
+# Mantener LF para scripts shell
+*.sh text eol=lf

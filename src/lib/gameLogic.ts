@@ -64,15 +64,35 @@ export function verificarGanador(tablero: Board, ultimoMovimiento: Move | null):
 
 /**
  * Verifica el estado global del juego (victoria, empate, en progreso)
- * @param tablero Tablero actual
- * @param anteriorTablero Tablero anterior (opcional, para detectar el último movimiento)
+ * Recorre todo el tablero para detectar victoria de X o O, sin depender del último movimiento
  */
-export function verificarEstadoJuego(tablero: Board, anteriorTablero: Board | null = null): GameState {
-  const ultimoMovimiento = obtenerUltimoMovimiento(tablero, anteriorTablero);
-  const ganador = verificarGanador(tablero, ultimoMovimiento);
-  if (ganador === 'X') return 'victoria_jugador';
-  if (ganador === 'O') return 'victoria_ia';
-  if (ganador === 'empate') return 'empate';
+export function verificarEstadoJuego(tablero: Board): GameState {
+  if (!esTableroValido(tablero)) return 'en_progreso';
+  // Revisar filas y columnas
+  for (let i = 0; i < 3; i++) {
+    // Fila
+    if (tablero[i][0] && tablero[i][0] === tablero[i][1] && tablero[i][1] === tablero[i][2]) {
+      if (tablero[i][0] === 'X') return 'victoria_jugador';
+      if (tablero[i][0] === 'O') return 'victoria_ia';
+    }
+    // Columna
+    if (tablero[0][i] && tablero[0][i] === tablero[1][i] && tablero[1][i] === tablero[2][i]) {
+      if (tablero[0][i] === 'X') return 'victoria_jugador';
+      if (tablero[0][i] === 'O') return 'victoria_ia';
+    }
+  }
+  // Diagonal principal
+  if (tablero[0][0] && tablero[0][0] === tablero[1][1] && tablero[1][1] === tablero[2][2]) {
+    if (tablero[0][0] === 'X') return 'victoria_jugador';
+    if (tablero[0][0] === 'O') return 'victoria_ia';
+  }
+  // Diagonal secundaria
+  if (tablero[0][2] && tablero[0][2] === tablero[1][1] && tablero[1][1] === tablero[2][0]) {
+    if (tablero[0][2] === 'X') return 'victoria_jugador';
+    if (tablero[0][2] === 'O') return 'victoria_ia';
+  }
+  // Empate
+  if (tableroLleno(tablero)) return 'empate';
   return 'en_progreso';
 }
 
