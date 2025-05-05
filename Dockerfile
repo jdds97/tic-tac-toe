@@ -4,8 +4,16 @@ WORKDIR /app
 
 # Copiar archivos de dependencias
 COPY package.json package-lock.json ./
-RUN npm ci
 
+
+# Copiar el resto del código fuente
+COPY . .
+
+# Dar permisos de escritura al usuario node sobre /app
+RUN chown -R node:node /app
+
+USER node
 
 EXPOSE 3000
-CMD ["npm", "run", "dev"]
+
+CMD ["bash"]

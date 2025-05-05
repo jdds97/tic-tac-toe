@@ -8,12 +8,11 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017/tic-tac-toe
     volumes:
       - .:/app
-      - /app/node_modules
-      - /app/.next
     ports:
       - "3000:3000"
     depends_on:
       - mongodb
+    command: ./dummy-server.sh 
 
   mongodb:
     container_name: "tic-tac-toe_mongodb"
