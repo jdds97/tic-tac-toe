@@ -1,6 +1,9 @@
 # Detener la ejecución si hay algún error
 $ErrorActionPreference = "Stop"
 
+# Configurar COMPOSE_BAKE para mejor performance
+$env:COMPOSE_BAKE = "true"
+
 try {
     # Construir y levantar los contenedores
     docker compose build --pull

@@ -94,5 +94,3 @@ Juego clásico de Tres en Raya desarrollado como reto Full Stack . Incluye front
 - Implementadas server actions más simples y menos código con interacción directa con la bbdd
 - Se han utilizado contenedores Docker para aislar dependencias y facilitar la colaboración entre diferentes equipos de desarrollo.
 
-> Proyecto realizado como parte del proceso de selección Full Stack Developer en Shakers.
-

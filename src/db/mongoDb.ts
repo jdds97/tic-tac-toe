@@ -3,7 +3,7 @@ import { MongooseCache, ConnectionResult } from '@/lib/types';
 import { MONGODB_URI } from '@/lib/constants';
 
 // Variable para almacenar la conexión en desarrollo (para no reconectar en cada hot reload)
-let cached: MongooseCache = {
+const cached: MongooseCache = {
   conn: null,
   promise: null
 };

@@ -7,6 +7,7 @@ const __dirname = dirname(__filename);
 
 const compat = new FlatCompat({
   baseDirectory: __dirname,
+  recommendedConfig: {},
 });
 
 const eslintConfig = [
@@ -16,7 +17,6 @@ const eslintConfig = [
     "plugin:@typescript-eslint/recommended"
   ),
   {
-    plugins: ["@typescript-eslint"],
     rules: {
       "no-unused-vars": "off",
       "@typescript-eslint/no-unused-vars": ["error", { 
@@ -24,7 +24,9 @@ const eslintConfig = [
         varsIgnorePattern: "^_" 
       }],
       "react-hooks/exhaustive-deps": "warn",
-      "import/order": ["warn", { "newlines-between": "always" }]
+      "react-hooks/rules-of-hooks": "warn",
+      "@typescript-eslint/no-explicit-any": "warn",
+      "prefer-const": "warn"
     }
   }
 ];

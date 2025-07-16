@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     environment:
       - MONGODB_URI=mongodb://mongodb:27017/tic-tac-toe
+      - COMPOSE_BAKE=true
     volumes:
       - .:/app
     ports:
@@ -22,6 +23,6 @@ services:
       - mongodb_data:/data/db
     ports:
       - "27017:27017"
-
+  
 volumes:
   mongodb_data:
